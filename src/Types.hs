@@ -1,5 +1,6 @@
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Types
   ( dispDollarAmt
@@ -9,6 +10,7 @@ module Types
   , billPeriodCurrent
   , Transaction (..)
   , dispTransaction
+  , User (..)
   ) where
 
 import Data.Decimal
@@ -18,6 +20,7 @@ import Data.Hourglass hiding (format)
 import System.Hourglass
 
 newtype User = User Text
+  deriving (Show, IsString)
 
 newtype DollarAmt = DollarAmt Decimal
   deriving Show
@@ -51,8 +54,10 @@ data Transaction = Transaction
   { _transAmt :: DollarAmt
   , _transDesc :: Text
   , _transPeriod :: BillPeriod
+  , _transUser :: User
   } deriving Show
 
 dispTransaction :: Transaction -> Text
-dispTransaction (Transaction amt desc period) =
-  desc <> ": " <> dispDollarAmt amt <> " for the period of " <> dispPeriod period
+dispTransaction (Transaction amt desc period user) =
+  tshow user <> " has the transaction\n"
+  <> desc <> ": " <> dispDollarAmt amt <> " for the period of " <> dispPeriod period
