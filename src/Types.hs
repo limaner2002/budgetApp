@@ -1,6 +1,7 @@
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE FlexibleInstances #-}
 
 module Types
   ( dispDollarAmt
@@ -11,6 +12,7 @@ module Types
   , Transaction (..)
   , dispTransaction
   , User (..)
+  , readCsv
   ) where
 
 import Data.Decimal
@@ -18,12 +20,19 @@ import ClassyPrelude
 import Formatting
 import Data.Hourglass hiding (format)
 import System.Hourglass
+import qualified Data.Csv as Csv
+import Data.Csv ((.:))
 
 newtype User = User Text
   deriving (Show, IsString)
 
 newtype DollarAmt = DollarAmt Decimal
   deriving Show
+
+instance Csv.FromField DollarAmt where
+  parseField bs = do
+    res <- Csv.parseField bs
+    pure $ mkDollar res
 
 dispDollarAmt :: DollarAmt -> Text
 dispDollarAmt (DollarAmt amt) = toStrict $ format ("$" % commas % "." % int) intPart decPart
@@ -39,6 +48,14 @@ mkDollar = DollarAmt . Decimal 2
 newtype BillPeriod = BillPeriod Date
   deriving Show
 
+instance Csv.FromField BillPeriod where
+  parseField bs = case parsedTime of
+    Nothing -> fail $ "The value " <> show bs <> " is not a valid Billing Period."
+    Just period -> pure $ BillPeriod $ timeGetDate period
+    where
+      parsedTime = timeParse billPeriodFormat str
+      str = unpack $ decodeUtf8 bs
+
 mkPeriod :: Int -> Month -> BillPeriod
 mkPeriod n mth = BillPeriod $ Date n mth 1
 
@@ -47,8 +64,8 @@ billPeriodCurrent = BillPeriod . timeGetDate <$> timeCurrent
 
 dispPeriod :: BillPeriod -> Text
 dispPeriod (BillPeriod date) = pack $ timePrint billPeriodFormat date
-  where
-    billPeriodFormat = [Format_MonthName_Short, Format_Text ' ', Format_Year]
+
+billPeriodFormat = [Format_MonthName_Short, Format_Text ' ', Format_Year]
 
 data Transaction = Transaction
   { _transAmt :: DollarAmt
@@ -61,3 +78,15 @@ dispTransaction :: Transaction -> Text
 dispTransaction (Transaction amt desc period user) =
   tshow user <> " has the transaction\n"
   <> desc <> ": " <> dispDollarAmt amt <> " for the period of " <> dispPeriod period
+
+instance Csv.FromNamedRecord (User -> Transaction) where
+  parseNamedRecord r = Transaction
+    <$> r .: "Amount"
+    <*> r .: "Description"
+    <*> r .: "Period"
+
+readCsv :: User -> FilePath -> IO (Either String (Vector Transaction))
+readCsv user@(User username) filePrefix = do
+  content <- fromStrict <$> (readFile $ filePrefix <> unpack username <> "-Table 1.csv")
+  let funcs = fmap snd $ Csv.decodeByName content :: Either String (Vector (User -> Transaction))
+  pure $ fmap (fmap (\f -> f user)) funcs

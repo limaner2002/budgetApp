@@ -25,6 +25,7 @@ dependencies:
 - classy-prelude
 - formatting
 - hourglass
+- cassava
 
 library:
   source-dirs: src
