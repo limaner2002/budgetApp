@@ -6,13 +6,13 @@
 module Types
   ( dispDollarAmt
   , mkDollar
-  , mkPeriod
   , dispPeriod
   , billPeriodCurrent
   , Transaction (..)
   , dispTransaction
   , User (..)
   , readCsv
+  , displayTransactions
   ) where
 
 import Data.Decimal
@@ -45,22 +45,21 @@ dispDollarAmt (DollarAmt amt) = toStrict $ format ("$" % commas % "." % int) int
 mkDollar :: Integer -> DollarAmt
 mkDollar = DollarAmt . Decimal 2
 
-newtype BillPeriod = BillPeriod Date
-  deriving Show
+newtype BillPeriod = BillPeriod DateTime
+
+instance Show BillPeriod where
+  show = unpack . dispPeriod
 
 instance Csv.FromField BillPeriod where
   parseField bs = case parsedTime of
     Nothing -> fail $ "The value " <> show bs <> " is not a valid Billing Period."
-    Just period -> pure $ BillPeriod $ timeGetDate period
+    Just period -> pure $ BillPeriod period
     where
       parsedTime = timeParse billPeriodFormat str
       str = unpack $ decodeUtf8 bs
 
-mkPeriod :: Int -> Month -> BillPeriod
-mkPeriod n mth = BillPeriod $ Date n mth 1
-
 billPeriodCurrent :: IO BillPeriod
-billPeriodCurrent = BillPeriod . timeGetDate <$> timeCurrent
+billPeriodCurrent = BillPeriod . timeGetDateTimeOfDay <$> timeCurrent
 
 dispPeriod :: BillPeriod -> Text
 dispPeriod (BillPeriod date) = pack $ timePrint billPeriodFormat date
@@ -90,3 +89,10 @@ readCsv user@(User username) filePrefix = do
   content <- fromStrict <$> (readFile $ filePrefix <> unpack username <> "-Table 1.csv")
   let funcs = fmap snd $ Csv.decodeByName content :: Either String (Vector (User -> Transaction))
   pure $ fmap (fmap (\f -> f user)) funcs
+
+displayTransactions :: User -> FilePath -> IO ()
+displayTransactions user path = do
+  eTransactions <- readCsv user path
+  case eTransactions of
+    Left error -> putStrLn $ pack error
+    Right transactions -> mapM_ print transactions
