@@ -26,6 +26,7 @@ dependencies:
 - formatting
 - hourglass
 - cassava
+- project-m36
 
 library:
   source-dirs: src

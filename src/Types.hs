@@ -2,6 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 module Types
   ( dispDollarAmt
@@ -12,7 +13,10 @@ module Types
   , dispTransaction
   , User (..)
   , readCsv
-  , displayTransactions
+  , displayBookEntries
+  , _gecuEntry
+  , _boaEntry
+  , _amexEntry
   ) where
 
 import Data.Decimal
@@ -22,6 +26,7 @@ import Data.Hourglass hiding (format)
 import System.Hourglass
 import qualified Data.Csv as Csv
 import Data.Csv ((.:))
+import Data.Proxy
 
 newtype User = User Text
   deriving (Show, IsString)
@@ -84,15 +89,114 @@ instance Csv.FromNamedRecord (User -> Transaction) where
     <*> r .: "Description"
     <*> r .: "Period"
 
-readCsv :: User -> FilePath -> IO (Either String (Vector Transaction))
-readCsv user@(User username) filePrefix = do
-  content <- fromStrict <$> (readFile $ filePrefix <> unpack username <> "-Table 1.csv")
-  let funcs = fmap snd $ Csv.decodeByName content :: Either String (Vector (User -> Transaction))
-  pure $ fmap (fmap (\f -> f user)) funcs
+readCsv :: (ByteString -> Either String (Vector a)) -> FilePath -> IO (Either String (Vector a))
+readCsv decodeFcn path = do
+  content <- readFile path
+  pure $ decodeFcn content
 
-displayTransactions :: User -> FilePath -> IO ()
-displayTransactions user path = do
-  eTransactions <- readCsv user path
-  case eTransactions of
+displayBookEntries :: (ByteString -> Either String (Vector a)) -> (a -> EntryId -> User -> BookEntry) -> Int -> User -> FilePath -> IO ()
+displayBookEntries decodeFcn f startIdx user path = do
+  eAs <- readCsv decodeFcn path
+  case eAs of
     Left error -> putStrLn $ pack error
-    Right transactions -> mapM_ print transactions
+    Right as -> do
+      let ids = fromList $ fmap EntryId $ [startIdx .. startIdx + length as]
+          entries = zipWith (\a id -> f a id user) as ids
+      mapM_ print entries
+
+data BookEntry = BookEntry
+  { _entryCategory :: Maybe Category
+  , _entryDescription :: Description
+  , _entryAmount :: EntryAmount (NonNegative DollarAmt)
+  , _entryDate :: Date
+  , _entryId :: EntryId
+  , _entryPerson :: User
+  } deriving (Show, Generic)
+
+newtype GECUEntry = GECUEntry
+  { _gecuEntry :: EntryId -> User -> BookEntry
+  }
+
+data EntryAmount a
+  = Credit a
+  | Debit a
+  deriving (Show, Generic, Eq)
+
+newtype EntryId = EntryId
+  { _entryIdInt :: Int
+  } deriving (Show, Generic, Eq)
+
+newtype Category = Category
+  { _categoryTxt :: Text
+  } deriving (Show, Generic, Eq)
+
+newtype NonNegative a = NonNegative
+  { _getNonNegative :: a
+  } deriving (Show, Generic, Eq, Ord, Num)
+
+newtype Description = Description
+  { _descTxt :: Text
+  } deriving (Show, Generic, Eq, Ord, Csv.FromField)
+
+instance Csv.FromNamedRecord GECUEntry where
+  parseNamedRecord r = GECUEntry
+    <$> ( BookEntry
+          <$> pure Nothing
+          <*> r Csv..: "Description"
+          <*> (_gecuAmt <$> Csv.parseNamedRecord r)
+          <*> (parseDate =<< r Csv..: "Date")
+        )
+
+parseDate :: Monad m => String -> m Date
+parseDate = maybe (fail "Could not parse the date!") pure . fmap dtDate . timeParse fmt
+  where
+    fmt = [Format_Month2, Format_Text '/', Format_Day2, Format_Text '/', Format_Year4]
+
+newtype GECUAmount = GECUAmount
+  { _gecuAmt :: EntryAmount (NonNegative DollarAmt)
+  } deriving (Show, Generic)
+
+instance Csv.FromNamedRecord GECUAmount where
+  parseNamedRecord r = GECUAmount <$> (parseDebit <|> parseCredit)
+    where
+      parseDebit = Debit . gecuAmount
+        <$> r Csv..: "Amount Debit"
+      parseCredit = Credit . gecuAmount
+        <$> r Csv..: "Amount Credit"
+
+gecuAmount :: Double -> NonNegative DollarAmt
+gecuAmount = NonNegative . doubleToDollar . abs
+
+doubleToDollar :: Double -> DollarAmt
+doubleToDollar = DollarAmt . roundTo 2 . fromRational . toRational
+
+toEntryAmount :: Double -> EntryAmount (NonNegative DollarAmt)
+toEntryAmount amt
+  | amt < 0 = Debit $ NonNegative $ doubleToDollar $ abs amt
+  | otherwise = Credit $ NonNegative $ doubleToDollar amt
+
+newtype BOAEntry = BOAEntry
+  { _boaEntry :: EntryId -> User -> BookEntry
+  }
+
+instance Csv.FromNamedRecord BOAEntry where
+  parseNamedRecord r = BOAEntry
+    <$> ( BookEntry
+      <$> pure Nothing
+      <*> r Csv..: "Payee"
+      <*> (toEntryAmount <$> r Csv..: "Amount")
+      <*> (parseDate =<< r Csv..: "Posted Date")
+        )
+
+newtype AmexEntry = AmexEntry
+  { _amexEntry :: EntryId -> User -> BookEntry
+  }
+
+instance Csv.FromRecord AmexEntry where
+  parseRecord r = AmexEntry
+    <$> ( BookEntry
+        <$> pure Nothing
+        <*> r Csv..! 2
+        <*> (toEntryAmount <$> r Csv..! 7)
+        <*> (parseDate =<< r Csv..! 0)
+        )
