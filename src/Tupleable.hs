@@ -15,6 +15,7 @@ import Data.Binary
 import Data.Decimal
 import Data.Proxy
 import Data.Hourglass
+import ProjectM36.Client (databaseContextExprForUniqueKey)
 
 instance Atomable a => Atomable (EntryAmount a)
 instance NFData a => NFData (EntryAmount a)
@@ -122,4 +123,5 @@ schema = toAddTypeExpr (Proxy :: Proxy (EntryAmount (NonNegative DollarAmt)))
   : toAddTypeExpr (Proxy :: Proxy EntryId)
   : toAddTypeExpr (Proxy :: Proxy User)
   : toDefineExpr (Proxy :: Proxy BookEntry) "bookEntries"
+  : databaseContextExprForUniqueKey "bookEntries" ["_entryId"]
   : []

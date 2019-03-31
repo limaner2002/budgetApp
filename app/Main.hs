@@ -7,6 +7,9 @@ import ClassyPrelude
 import Types
 import Tupleable
 import Database
+import ProjectM36.Client.Simple
+import ProjectM36.Tupleable
+import Control.Lens
 
 main :: IO ()
 main = do
@@ -33,3 +36,12 @@ displayBookEntries decodeFcn f cont startIdx user path = do
           entries = zipWith (\a id -> f a id user) as ids
       cont entries
 
+insertBookEntries :: (ByteString -> Either String (Vector a)) -> (a -> EntryId -> User -> BookEntry) -> ConnectionInfo -> User -> FilePath -> IO (Either DbError (Either RelationalError ()))
+insertBookEntries decodeFcn f connInfo user path = do
+  res <- runTransaction connInfo $ retrieveTupleable (RelationVariable "bookEntries" ())
+  case maximumMay $ res ^.. _Right . traverse . _Right . to _entryId of
+    Nothing -> displayBookEntries decodeFcn f (insertFcn connInfo) 1 user path
+    Just (EntryId n) -> displayBookEntries decodeFcn f (insertFcn connInfo) (n + 1) user path
+
+insertFcn :: (Tupleable a, Traversable t) => ConnectionInfo -> t a -> IO (Either DbError (Either RelationalError ()))
+insertFcn connInfo l = runTransaction connInfo $ mapM execute $ toInsertExpr l "bookEntries"

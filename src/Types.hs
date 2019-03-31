@@ -3,6 +3,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Types where
   -- ( dispDollarAmt
@@ -26,12 +27,15 @@ import Data.Hourglass hiding (format)
 import System.Hourglass
 import qualified Data.Csv as Csv
 import Data.Csv ((.:))
+import Control.Lens
 
-newtype User = User Text
+newtype User = User
+  { _userTxt :: Text
+  }
   deriving (Show, IsString, Generic, Eq)
 
 newtype DollarAmt = DollarAmt Decimal
-  deriving (Show, Eq, Generic)
+  deriving (Show, Eq, Generic, Num, Ord)
 
 instance Csv.FromField DollarAmt where
   parseField bs = do
@@ -104,11 +108,11 @@ newtype GECUEntry = GECUEntry
 data EntryAmount a
   = Credit a
   | Debit a
-  deriving (Show, Generic, Eq)
+  deriving (Show, Generic, Eq, Ord)
 
 newtype EntryId = EntryId
   { _entryIdInt :: Int
-  } deriving (Show, Generic, Eq)
+  } deriving (Show, Generic, Eq, Ord, Num)
 
 newtype Category = Category
   { _categoryTxt :: Text
@@ -180,7 +184,19 @@ instance Csv.FromRecord AmexEntry where
   parseRecord r = AmexEntry
     <$> ( BookEntry
         <$> pure Nothing
-        <*> r Csv..! 2
-        <*> (toEntryAmount <$> r Csv..! 7)
+        <*> r Csv..! 3
+        <*> (toEntryAmount <$> r Csv..! 2)
         <*> (parseDate =<< r Csv..! 0)
         )
+
+makeLenses ''BookEntry
+makeLenses ''GECUEntry
+makePrisms ''EntryAmount
+makeLenses ''EntryId
+makeLenses ''Category
+makeLenses ''NonNegative
+makeLenses ''Description
+makeLenses ''GECUAmount
+makeLenses ''BOAEntry
+makeLenses ''AmexEntry
+makeLenses ''User
