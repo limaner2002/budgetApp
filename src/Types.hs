@@ -4,20 +4,20 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE DeriveGeneric #-}
 
-module Types
-  ( dispDollarAmt
-  , mkDollar
-  , dispPeriod
-  , billPeriodCurrent
-  , Transaction (..)
-  , dispTransaction
-  , User (..)
-  , readCsv
-  , displayBookEntries
-  , _gecuEntry
-  , _boaEntry
-  , _amexEntry
-  ) where
+module Types where
+  -- ( dispDollarAmt
+  -- , mkDollar
+  -- , dispPeriod
+  -- , billPeriodCurrent
+  -- , Transaction (..)
+  -- , dispTransaction
+  -- , User (..)
+  -- , readCsv
+  -- , displayBookEntries
+  -- , _gecuEntry
+  -- , _boaEntry
+  -- , _amexEntry
+  -- ) where
 
 import Data.Decimal
 import ClassyPrelude
@@ -26,13 +26,12 @@ import Data.Hourglass hiding (format)
 import System.Hourglass
 import qualified Data.Csv as Csv
 import Data.Csv ((.:))
-import Data.Proxy
 
 newtype User = User Text
-  deriving (Show, IsString)
+  deriving (Show, IsString, Generic, Eq)
 
 newtype DollarAmt = DollarAmt Decimal
-  deriving Show
+  deriving (Show, Eq, Generic)
 
 instance Csv.FromField DollarAmt where
   parseField bs = do
@@ -88,21 +87,6 @@ instance Csv.FromNamedRecord (User -> Transaction) where
     <$> r .: "Amount"
     <*> r .: "Description"
     <*> r .: "Period"
-
-readCsv :: (ByteString -> Either String (Vector a)) -> FilePath -> IO (Either String (Vector a))
-readCsv decodeFcn path = do
-  content <- readFile path
-  pure $ decodeFcn content
-
-displayBookEntries :: (ByteString -> Either String (Vector a)) -> (a -> EntryId -> User -> BookEntry) -> Int -> User -> FilePath -> IO ()
-displayBookEntries decodeFcn f startIdx user path = do
-  eAs <- readCsv decodeFcn path
-  case eAs of
-    Left error -> putStrLn $ pack error
-    Right as -> do
-      let ids = fromList $ fmap EntryId $ [startIdx .. startIdx + length as]
-          entries = zipWith (\a id -> f a id user) as ids
-      mapM_ print entries
 
 data BookEntry = BookEntry
   { _entryCategory :: Maybe Category

@@ -27,6 +27,7 @@ dependencies:
 - hourglass
 - cassava
 - project-m36
+- binary
 
 library:
   source-dirs: src
