@@ -110,6 +110,14 @@ instance Atomable User
 instance NFData User
 instance Binary User
 
+instance Atomable Account
+instance NFData Account
+instance Binary Account
+
+instance Atomable AccountNum
+instance NFData AccountNum
+instance Binary AccountNum
+
 instance Tupleable BookEntry
 
 schema :: [DatabaseContextExpr]
@@ -122,6 +130,8 @@ schema = toAddTypeExpr (Proxy :: Proxy (EntryAmount (NonNegative DollarAmt)))
   : toAddTypeExpr (Proxy :: Proxy Date)
   : toAddTypeExpr (Proxy :: Proxy EntryId)
   : toAddTypeExpr (Proxy :: Proxy User)
+  : toAddTypeExpr (Proxy :: Proxy AccountNum)
+  : toAddTypeExpr (Proxy :: Proxy Account)
   : toDefineExpr (Proxy :: Proxy BookEntry) "bookEntries"
   : databaseContextExprForUniqueKey "bookEntries" ["_entryId"]
   : []

@@ -99,10 +99,11 @@ data BookEntry = BookEntry
   , _entryDate :: Date
   , _entryId :: EntryId
   , _entryPerson :: User
+  , _entryAccount :: Account
   } deriving (Show, Generic)
 
 newtype GECUEntry = GECUEntry
-  { _gecuEntry :: EntryId -> User -> BookEntry
+  { _gecuEntry :: EntryId -> User -> AccountNum -> BookEntry
   }
 
 data EntryAmount a
@@ -127,13 +128,11 @@ newtype Description = Description
   } deriving (Show, Generic, Eq, Ord, Csv.FromField)
 
 instance Csv.FromNamedRecord GECUEntry where
-  parseNamedRecord r = GECUEntry
-    <$> ( BookEntry
-          <$> pure Nothing
-          <*> r Csv..: "Description"
-          <*> (_gecuAmt <$> Csv.parseNamedRecord r)
-          <*> (parseDate =<< r Csv..: "Date")
-        )
+  parseNamedRecord r = do
+    desc <- r Csv..: "Description"
+    amt <- _gecuAmt <$> Csv.parseNamedRecord r
+    dte <- parseDate =<< r Csv..: "Date"
+    pure $ GECUEntry $ \eId user acctNum -> BookEntry Nothing desc amt dte eId user (Account "GECU" acctNum)
 
 parseDate :: Monad m => String -> m Date
 parseDate = maybe (fail "Could not parse the date!") pure . fmap dtDate . timeParse fmt
@@ -164,30 +163,35 @@ toEntryAmount amt
   | otherwise = Credit $ NonNegative $ doubleToDollar amt
 
 newtype BOAEntry = BOAEntry
-  { _boaEntry :: EntryId -> User -> BookEntry
+  { _boaEntry :: EntryId -> User -> AccountNum -> BookEntry
   }
 
 instance Csv.FromNamedRecord BOAEntry where
-  parseNamedRecord r = BOAEntry
-    <$> ( BookEntry
-      <$> pure Nothing
-      <*> r Csv..: "Payee"
-      <*> (toEntryAmount <$> r Csv..: "Amount")
-      <*> (parseDate =<< r Csv..: "Posted Date")
-        )
+  parseNamedRecord r = do
+    desc <- r Csv..: "Payee"
+    amt <- toEntryAmount <$> r Csv..: "Amount"
+    dte <- parseDate =<< r Csv..: "Posted Date"
+    pure $ BOAEntry $ \eId user acctNum -> BookEntry Nothing desc amt dte eId user (Account "Bank of America" acctNum)
 
 newtype AmexEntry = AmexEntry
-  { _amexEntry :: EntryId -> User -> BookEntry
+  { _amexEntry :: EntryId -> User -> AccountNum -> BookEntry
   }
 
 instance Csv.FromRecord AmexEntry where
-  parseRecord r = AmexEntry
-    <$> ( BookEntry
-        <$> pure Nothing
-        <*> r Csv..! 3
-        <*> (toEntryAmount <$> r Csv..! 2)
-        <*> (parseDate =<< r Csv..! 0)
-        )
+  parseRecord r = do
+    desc <- r Csv..! 3
+    amt <- toEntryAmount <$> r Csv..! 2
+    dte <- parseDate =<< r Csv..! 0
+    pure $ AmexEntry $ \eId user acctNum -> BookEntry Nothing desc amt dte eId user (Account "American Express" acctNum)
+
+data Account = Account
+  { _actBank :: Text
+  , _actNum :: AccountNum
+  } deriving (Show, Eq, Ord, Generic)
+
+newtype AccountNum = AccountNum
+  { acctNumInt :: Int
+  } deriving (Show, Eq, Ord, Num, Generic)
 
 makeLenses ''BookEntry
 makeLenses ''GECUEntry

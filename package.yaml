@@ -28,6 +28,8 @@ dependencies:
 - cassava
 - project-m36
 - binary
+- lens
+- foldl
 
 library:
   source-dirs: src
